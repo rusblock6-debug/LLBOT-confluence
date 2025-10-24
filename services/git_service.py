@@ -1,4 +1,4 @@
-# services/git_service.py
+# services/git_service.py (ФИНАЛЬНАЯ, 100% ПРАВИЛЬНАЯ ВЕРСИЯ)
 import requests
 import os
 from dotenv import load_dotenv
@@ -9,35 +9,57 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_REPO_OWNER")
 GITHUB_REPO = os.getenv("GITHUB_REPO_NAME")
 
-def get_raw_url_from_github(path_in_repo: str) -> str:
-    """Создает прямую ссылку на файл в репозитории."""
-    return f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/main/{path_in_repo}"
+def list_md_files_from_git() -> list:
+    """
+    Получает список всех .md файлов из нужных папок в репозитории.
+    """
+    # Вот эти папки. Они лежат ВНУТРИ 'docs' РЯДОМ друг с другом.
+    dirs_to_search = ["architecture", "blocks", "functions", "glossary"]
+    all_files = []
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+
+    for dir_name in dirs_to_search:
+        path_to_search = f"docs/{dir_name}" # Смотрим в docs/blocks, docs/functions и т.д.
+        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{path_to_search}"
+        try:
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            items = response.json()
+            for item in items:
+                if item['type'] == 'file' and item['name'].endswith('.md'):
+                    all_files.append(item['path'])
+        except Exception as e:
+            print(f"   -> Не удалось получить файлы из папки {path_to_search}: {e}")
+            
+    return all_files
 
 def load_git_knowledge() -> str:
-    """Загружает все текстовые данные из эмбеддинг-файлов Git."""
-    print("Загружаю знания из Git...")
-    base_path = "docs/architecture"
-    files_to_load = [
-        "architecture_combined.embeddings.json",
-        "blocks_combined.embeddings.json",
-        "functions_combined.embeddings.json",
-        "glossary_combined.embeddings.json",
-        "user_scenarios_combined.embeddings.json",
-    ]
+    """Загружает текст из всех .md файлов в Git."""
+    print("Загружаю знания из Git (чтение .md файлов из всех нужных папок)...")
+    
+    md_files = list_md_files_from_git()
+    if not md_files:
+        print("Не найдено .md файлов в репозитории.")
+        return ""
+        
+    print(f"Найдено {len(md_files)} .md файлов. Начинаю загрузку...")
     
     full_text = ""
-    for file_name in files_to_load:
+    for file_path in md_files:
         try:
-            url = get_raw_url_from_github(f"{base_path}/{file_name}")
-            response = requests.get(url)
+            raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/main/{file_path}"
+            response = requests.get(raw_url)
             response.raise_for_status()
             
-            data = response.json()
-            for item in data:
-                if 'text' in item:
-                    full_text += item['text'] + "\n\n"
-        except requests.exceptions.RequestException as e:
-            print(f"Не удалось загрузить файл {file_name} из Git: {e}")
+            content = response.text
+            print(f"   -> Загружен файл: {file_path} ({len(content)} символов)")
             
-    print(f"Загружено {len(full_text)} символов из Git.")
+            full_text += f"--- ФАЙЛ: {file_path} ---\n"
+            full_text += content
+            full_text += "\n\n"
+            
+        except Exception as e:
+            print(f"   !!! Ошибка при загрузке файла {file_path}: {e}")
+            
+    print(f"Загрузка из Git завершена. Общий размер: {len(full_text)} символов.")
     return full_text

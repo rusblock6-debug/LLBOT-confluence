@@ -4,7 +4,7 @@ import json
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 
-def generate_text(prompt: str, model: str = "llama3.1:8b") -> str:
+def generate_text(prompt: str, model: str = "llama3.2:3b") -> str:
     """Отправляет промпт в Ollama и возвращает сгенерированный текст."""
     print(f"Отправляю запрос в Ollama (модель: {model})...")
     
@@ -12,9 +12,7 @@ def generate_text(prompt: str, model: str = "llama3.1:8b") -> str:
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {
-            "temperature": 0.3,
-        }
+        "options": {"temperature": 0.3}
     }
     
     try:
