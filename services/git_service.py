@@ -1,4 +1,4 @@
-# services/git_service.py (ФИНАЛЬНАЯ, 100% ПРАВИЛЬНАЯ ВЕРСИЯ)
+# services/git_service.py (ИСЛЕДЕННАЯ, 100% ПРАВИЛЬНАЯ ВЕРСИЯ)
 import requests
 import os
 from dotenv import load_dotenv
@@ -7,20 +7,20 @@ load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_REPO_OWNER")
-GITHUB_REPO = os.getenv("GITHUB_REPO_NAME")
+GITHUB_REPO_NAME = os.getenv("GITHUB_REPO_NAME")
 
 def list_md_files_from_git() -> list:
     """
     Получает список всех .md файлов из нужных папок в репозитории.
     """
     # Вот эти папки. Они лежат ВНУТРИ 'docs' РЯДОМ друг с другом.
-    dirs_to_search = ["architecture", "blocks", "functions", "glossary"]
+    dirs_to_search = ["architecture", "blocks", "functions", "glossary", "user_scenarios"]
     all_files = []
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
 
     for dir_name in dirs_to_search:
-        path_to_search = f"docs/{dir_name}" # Смотрим в docs/blocks, docs/functions и т.д.
-        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{path_to_search}"
+        path_to_search = f"docs/{dir_name}"
+        api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/contents/{path_to_search}"
         try:
             response = requests.get(api_url, headers=headers)
             response.raise_for_status()
@@ -30,7 +30,7 @@ def list_md_files_from_git() -> list:
                     all_files.append(item['path'])
         except Exception as e:
             print(f"   -> Не удалось получить файлы из папки {path_to_search}: {e}")
-            
+
     return all_files
 
 def load_git_knowledge() -> str:
@@ -47,16 +47,11 @@ def load_git_knowledge() -> str:
     full_text = ""
     for file_path in md_files:
         try:
-            raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/main/{file_path}"
+            raw_url = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO_NAME}/main/{file_path}"
             response = requests.get(raw_url)
             response.raise_for_status()
-            
             content = response.text
-            print(f"   -> Загружен файл: {file_path} ({len(content)} символов)")
-            
-            full_text += f"--- ФАЙЛ: {file_path} ---\n"
-            full_text += content
-            full_text += "\n\n"
+            full_text += f"--- ФАЙЛ: {file_path} ---\n\n{content}\n\n"
             
         except Exception as e:
             print(f"   !!! Ошибка при загрузке файла {file_path}: {e}")

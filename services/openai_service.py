@@ -1,36 +1,87 @@
-# services/openai_service.py (адаптированный для OpenRouter)
-from openai import OpenAI
+# services/openai_service.py (ВЕРСИЯ С УСИЛЕННОЙ ДИАГНОСТИКОЙ .env)
+import requests
+import json
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()
+# --- НАЧАЛО БЛОКА ДИАГНОСТИКИ ---
+print("--- ДИАГНОСТИКА ЗАГРУЗКИ .env ---")
+# Пытаемся найти файл .env
+dotenv_path = find_dotenv()
+print(f"Поиск файла .env... Найден по пути: {dotenv_path}")
 
-# Инициализируем клиент OpenAI, но направляем его на серверы OpenRouter
-client = OpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1"  # <-- ВОТ ГЛАВНОЕ ИЗМЕНЕНИЕ
-)
+if dotenv_path:
+    # Загружаем переменные из найденного файла
+    load_result = load_dotenv(dotenv_path)
+    print(f"Результат загрузки load_dotenv(): {load_result}")
+else:
+    print("ОШИБКА: Файл .env не найден!")
 
-def generate_text(prompt: str, model: str = "tngtech/deepseek-r1t2-chimera:free") -> str:
-    """
-    Отправляет промпт в OpenRouter API (используя совместимую библиотеку OpenAI) и возвращает текст.
-    """
+# Пытаемся прочитать переменную
+api_key = os.getenv("OPENROUTER_API_KEY")
+print(f"Значение os.getenv('OPENROUTER_API_KEY'): {api_key}")
+
+if api_key:
+    print(f"Длина ключа: {len(api_key)} символов.")
+    print(f"Первые 10 символов ключа: {api_key[:10]}...")
+else:
+    print("ОШИБКА: Ключ не был загружен!")
+print("--- КОНЕЦ БЛОКА ДИАГНОСТИКИ ---")
+# --- КОНЕЦ БЛОКА ДИАГНОСТИКИ ---
+
+
+# Используем переменную, которую мы проверили
+OPENROUTER_API_KEY = api_key
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+class LLMError(Exception):
+    """Кастомный класс для ошибок LLM."""
+    pass
+
+def generate_text(prompt: str, model: str = "minimax/minimax-m2:free") -> str:
     print(f"Отправляю запрос в OpenRouter (модель: {model})...")
     
+    # Проверяем ключ еще раз перед отправкой
+    if not OPENROUTER_API_KEY:
+        raise LLMError("API ключ не загружен. Проверьте вывод диагностики при старте.")
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Ты — опытный технический писатель и аналитик."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-        )
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload)
+        response.raise_for_status()
         
-        generated_text = response.choices[0].message.content
-        print("Ответ от OpenRouter получен.")
-        return generated_text
+        response_text = response.text
+        try:
+            response_json = response.json()
+        except json.JSONDecodeError:
+            print("Предупреждение: Получен невалидный JSON. Попытка исправить...")
+            import re
+            match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if match:
+                cleaned_json = match.group(0)
+                response_json = json.loads(cleaned_json)
+                print("JSON успешно исправлен.")
+            else:
+                raise LLMError("Не удалось найти валидный JSON в ответе сервера.")
         
+        if 'choices' in response_json and len(response_json['choices']) > 0 and 'message' in response_json['choices'][0]:
+            generated_text = response_json['choices'][0]['message']['content']
+            print("Ответ от OpenRouter получен и успешно разобран.")
+            return generated_text
+        else:
+            raise LLMError("Неверная структура ответа от API.")
+
+    except requests.exceptions.RequestException as e:
+        raise LLMError(f"Ошибка API: {e}")
     except Exception as e:
-        print(f"Ошибка при запросе к OpenRouter API: {e}")
-        return f"Произошла ошибка при обращении к модели: {e}"
+        raise LLMError(f"Непредвиденная ошибка: {e}")
