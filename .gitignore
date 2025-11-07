@@ -13,3 +13,5 @@ __pycache__/
 
 # Игнорировать настройки VS Code (по желанию)
 .vscode/
+
+chroma_db/

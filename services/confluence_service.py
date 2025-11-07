@@ -1,86 +1,107 @@
-# services/confluence_service.py (УЛУЧШЕННАЯ ВЕРСИЯ С ГЛОССАРИЕМ)
-from atlassian import Confluence
+# services/confluence_service.py
 import os
+from atlassian import Confluence
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-import requests # Добавим для прямого обращения к API
 
 load_dotenv()
 
+# --- Настройки подключения к Confluence ---
 CONFLUENCE_URL = os.getenv("CONFLUENCE_URL")
 CONFLUENCE_USERNAME = os.getenv("CONFLUENCE_USERNAME")
 CONFLUENCE_API_TOKEN = os.getenv("CONFLUENCE_API_TOKEN")
 SPACE_KEY = os.getenv("SPACE_KEY")
 
-# Используем сессию для прямых запросов к API Confluence
-auth = (CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN)
+# Инициализация клиента
+try:
+    confluence = Confluence(
+        url=CONFLUENCE_URL,
+        username=CONFLUENCE_USERNAME,
+        password=CONFLUENCE_API_TOKEN,
+        cloud=True  # Важно для Atlassian Cloud
+    )
+    print("Клиент Confluence успешно инициализирован.")
+except Exception as e:
+    print(f"ОШИБКА: Не удалось инициализировать клиент Confluence: {e}")
+    confluence = None
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ГЛОССАРИЯ ---
-def load_glossary_from_confluence() -> dict:
-    """Загружает глоссарий из таблиц Confluence в словарь."""
-    print("Загружаю глоссарий из Confluence...")
-    glossary = {}
-    url = f"{CONFLUENCE_URL}/rest/api/content"
-    params = {"spaceKey": SPACE_KEY, "limit": 50, "expand": "body.storage"}
+def search_confluence(query: str, limit: int = 10) -> str:
+    """
+    Ищет в Confluence по запросу и возвращает объединенный текст найденных страниц.
+    """
+    if not confluence:
+        print("Клиент Confluence не доступен. Поиск не выполнен.")
+        return ""
     
-    try:
-        while True:
-            response = requests.get(url, params=params, auth=auth)
-            response.raise_for_status()
-            data = response.json()
-            
-            for page in data.get("results", []):
-                title = page["title"]
-                html = page["body"]["storage"]["value"]
-                
-                # Парсинг таблиц, как в вашем примере
-                soup = BeautifulSoup(html, "lxml")
-                for table in soup.find_all("table"):
-                    for tr in table.find_all("tr"):
-                        cols = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
-                        if len(cols) >= 2:
-                            term = cols[0].upper()
-                            definition = " ".join(cols[1:])
-                            glossary[term] = definition
-            
-            if "_links" in data and "next" in data["_links"]:
-                url = CONFLUENCE_URL + data["_links"]["next"]
-                params = None
-            else:
-                break
-                
-    except Exception as e:
-        print(f"Ошибка при загрузке глоссария: {e}")
-        
-    print(f"Загружено {len(glossary)} терминов в глоссарий.")
-    return glossary
-
-# --- СТАРАЯ ФУНКЦИЯ ДЛЯ ПОИСКА (остается для общих запросов) ---
-def search_confluence(query: str, limit: int = 5) -> str:
-    """Ищет в Confluence страницы по запросу и возвращает их текст."""
     print(f"Ищу в Confluence по запросу: '{query}'...")
     try:
-        confluence = Confluence(url=CONFLUENCE_URL, username=CONFLUENCE_USERNAME, password=CONFLUENCE_API_TOKEN, cloud=True)
-        cql = f'text ~ "{query}" or title ~ "{query}"'
-        response = confluence.cql(cql, limit=limit)
+        results = confluence.cql(
+            cql=f"space='{SPACE_KEY}' and text ~ '{query}'",
+            limit=limit,
+            expand='body.storage'
+        )
         
-        if 'results' not in response or not response['results']:
+        if not results:
             print("   В Confluence ничего не найдено.")
             return ""
-            
-        results = response['results']
-        full_text = ""
+
+        combined_text = ""
         for page in results:
-            if 'id' in page and 'title' in page:
-                title = page['title']
-                content = confluence.get_page_by_id(page['id'], expand='body.storage')['body']['storage']['value']
-                soup = BeautifulSoup(content, "html.parser")
-                text_content = soup.get_text(separator=' ', strip=True)
-                full_text += f"--- Confluence Page: {title} ---\n{text_content}\n\n"
+            title = page.get('title', 'Без заголовка')
+            content = page.get('body', {}).get('storage', {}).get('value', '')
+            combined_text += f"--- СТРАНИЦА: {title} ---\n{content}\n\n"
         
-        print(f"   Обработано {len(results)} страниц из Confluence.")
-        return full_text
+        print(f"   Найдено {len(results)} страниц в Confluence.")
+        return combined_text.strip()
 
     except Exception as e:
-        print(f"   Ошибка при поиске в Confluence: {e}")
+        print(f"   Произошла ошибка при поиске в Confluence: {e}")
         return ""
+
+def get_all_pages_from_space(space_key: str, limit: int = 50) -> list[str]:
+    """
+    Рекурсивно получает все страницы из указанного пространства Confluence.
+    """
+    if not confluence:
+        print("Клиент Confluence не доступен. Загрузка всех страниц не выполнена.")
+        return []
+
+    all_content = []
+    start = 0
+    has_more = True
+
+    print(f"  Скачивание страниц из пространства '{space_key}'...")
+    while has_more:
+        try:
+            # Метод для получения страниц из пространства
+            response = confluence.get_all_pages_from_space(
+                space=space_key, 
+                start=start, 
+                limit=limit,
+                expand='body.storage'
+            )
+            
+            if not response:
+                has_more = False
+                break
+
+            for page in response:
+                title = page.get('title', 'Без заголовка')
+                # Извлекаем текст из body.storage
+                content = page.get('body', {}).get('storage', {}).get('value', '')
+                if content:
+                    formatted_page = f"--- СТРАНИЦА: {title} ---\n{content}"
+                    all_content.append(formatted_page)
+            
+            # Проверяем, есть ли еще страницы
+            if len(response) < limit:
+                has_more = False
+            else:
+                start += limit
+                print(f"    Загружено {len(all_content)} страниц, продолжаю...")
+
+        except Exception as e:
+            print(f"    ОШИБКА при получении страниц: {e}")
+            has_more = False
+
+    print(f"  Завершили загрузку. Всего страниц: {len(all_content)}")
+    return all_content
