@@ -1,60 +1,133 @@
-# bot.py (ПОЛНАЯ ФИНАЛЬНАЯ ВЕРСИЯ)
+# bot.py (УПРОЩЕННАЯ ВЕРСИЯ БЕЗ КНОПКИ "НАЗАД")
 import os
 import requests
 import asyncio
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ORCHESTRATOR_URL = "http://127.0.0.1:8000/generate"
+ORCHESTRATOR_URL = "http://127.0.0.1:8000/process"
+
+# --- Определяем клавиатуры ---
+main_keyboard = [
+    [KeyboardButton('📄 Документ'), KeyboardButton('📝 Термин')]
+]
+main_markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=True, resize_keyboard=True)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Привет! Отправляй запрос.')
+    """Отправляет приветствие и главную клавиатуру."""
+    # Сбрасываем предыдущее действие пользователя
+    context.user_data['action'] = None
+    await update.message.reply_text(
+        'Привет! Я помогу тебе создать документ или найти определение термина. '
+        'Выбери, что ты хочешь сделать:',
+        reply_markup=main_markup
+    )
 
-async def handle_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_query = update.message.text
+async def process_request(update: Update, context: ContextTypes.DEFAULT_TYPE, user_query: str, request_type: str, template_name: str = None) -> None:
+    """Универсальная функция для отправки запроса на API и обработки ответа."""
     await update.message.reply_text(f'Принял запрос: "{user_query}". Начинаю обработку...')
+    if template_name:
+        await update.message.reply_text(f'Использую шаблон: {template_name}')
     
     docx_path = None
     
     try:
-        response = requests.post(ORCHESTRATOR_URL, json={"query": user_query})
+        # Готовим payload для API
+        payload = {"query": user_query, "request_type": request_type}
+        if template_name:
+            payload["template_name"] = template_name
+
+        response = requests.post(ORCHESTRATOR_URL, json=payload)
         response.raise_for_status()
         
         result_info = response.json()
         
-        # Проверяем статус, который вернул сервер
         if result_info.get("status") == "success":
-            docx_path = result_info.get("file_path")
-            if docx_path and os.path.exists(docx_path):
-                with open(docx_path, 'rb') as doc:
-                    await update.message.reply_document(document=doc, caption="Готово! Ваш документ.")
-            else:
-                await update.message.reply_text("Сервер сообщил об успехе, но файл не найден.")
+            result_type = result_info.get("result_type")
+
+            if result_type == "term":
+                term = result_info.get("term")
+                definition = result_info.get("definition")
+                await update.message.reply_text(f'**Определение термина "{term}":**\n\n{definition}', parse_mode='Markdown')
+
+            elif result_type == "document":
+                docx_path = result_info.get("file_path")
+                if docx_path and os.path.exists(docx_path):
+                    with open(docx_path, 'rb') as doc:
+                        await update.message.reply_document(document=doc, caption="Готово! Ваш документ.")
+                else:
+                    await update.message.reply_text("Сервер сообщил об успехе, но файл не найден.")
         else:
-            # Если сервер вернул ошибку, сообщаем ее пользователю
             error_message = result_info.get("message", "Неизвестная ошибка на сервере.")
-            await update.message.reply_text(f'Не удалось создать документ. Причина: {error_message}')
+            await update.message.reply_text(f'Не удалось обработать запрос. Причина: {error_message}')
 
     except Exception as e:
         await update.message.reply_text(f'Произошла ошибка связи с сервером: {e}')
-        print(f"--- ОШИБКА В БОТЕ ---")
-        print(e)
+        print(f"--- ОШИБКА В БОТЕ ---\n{e}")
     
     finally:
         # Удаляем временный файл, если он был создан
         if docx_path and os.path.exists(docx_path):
-            os.remove(doc_path)
+            os.remove(docx_path)
             print("Временный файл удален.")
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Универсальный обработчик для всех текстовых сообщений."""
+    user_text = update.message.text
+    current_action = context.user_data.get('action')
+
+    # --- Если пользователь в главном меню ---
+    if current_action is None:
+        if '📄 Документ' in user_text:
+            context.user_data['action'] = 'document'
+            await update.message.reply_text(
+                'Отлично! Введи текст для создания документа.\n\n'
+                'Если хочешь использовать шаблон, напиши в формате:\n'
+                '"Ваш запрос" по шаблону Имя_файла_шаблона.doc'
+            )
+        elif '📝 Термин' in user_text:
+            context.user_data['action'] = 'term'
+            await update.message.reply_text('Хорошо! Введи термин для поиска.')
+        else:
+            # Пользователь ввел текст сразу, считаем что он хочет документ
+            await process_request(update, context, user_text, 'document')
+            # Состояние не менялось, так что сбрасывать не нужно
+            await update.message.reply_text('Выбери следующее действие:', reply_markup=main_markup)
+    else:
+        # --- Пользователь уже выбрал действие и вводит запрос ---
+        request_type = current_action
+        user_query = user_text
+        template_name = None
+
+        if request_type == 'document':
+            if "по шаблону" in user_query.lower():
+                try:
+                    parts = user_query.split("по шаблону")
+                    user_query = parts[0].strip()
+                    template_name = parts[1].strip()
+                except IndexError:
+                    await update.message.reply_text("Неверный формат для указания шаблона. Попробуй еще раз.")
+                    return
+
+        # Вызываем обработку запроса
+        await process_request(update, context, user_query, request_type, template_name)
+        
+        # --- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Возвращаем в главное меню ---
+        context.user_data['action'] = None
+        await update.message.reply_text('Что-нибудь еще?', reply_markup=main_markup)
+
 
 if __name__ == '__main__':
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).connect_timeout(30.0).read_timeout(30.0).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_request))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
     print("Telegram-бот запущен...")
     application.run_polling()
