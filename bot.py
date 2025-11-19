@@ -3,10 +3,13 @@ import os
 import requests
 import asyncio
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, Updater as _PTB_Updater
 from dotenv import load_dotenv
 
 load_dotenv()
+
+if hasattr(_PTB_Updater, "__slots__") and "_Updater__polling_cleanup_cb" not in _PTB_Updater.__slots__:
+    _PTB_Updater.__slots__ = _PTB_Updater.__slots__ + ("_Updater__polling_cleanup_cb",)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ORCHESTRATOR_URL = "http://127.0.0.1:8000/process"

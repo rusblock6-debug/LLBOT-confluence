@@ -1,5 +1,6 @@
 # main.py (ВЕРСИЯ С ЖЕСТКИМ ПОШАГОВЫМ ПРОМТОМ ДЛЯ ШАБЛОНОВ)
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 from datetime import datetime
@@ -21,6 +22,15 @@ load_dotenv()
 
 # --- Инициализация ---
 app = FastAPI(title="Smart Writer API")
+
+# Разрешаем обращения из браузера (в том числе при открытии viwer.html локально или с другого origin)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 ks = KnowledgeService()
 
 # --- Pydantic Модели для запросов ---
@@ -34,7 +44,7 @@ class TermRequestModel(BaseModel):
 class ProcessRequestModel(BaseModel):
     query: str
     request_type: str  # "document" или "term"
-    template_name: str = None # Имя файла шаблона, например "ГОСТ34_Техническое задание.doc"
+    template_name: str | None = None  # Имя файла шаблона, например "ГОСТ34_Техническое задание.doc"
 
 class FeedbackRequestModel(BaseModel):
     author: str | None = None
@@ -398,7 +408,12 @@ def process_user_request(request: ProcessRequestModel):
             title = f"Документ: {user_query}"
             docx_path = create_docx(content=generated_text, title=title)
             
-            return {"status": "success", "result_type": "document", "file_path": docx_path}
+            return {
+                "status": "success",
+                "result_type": "document",
+                "file_path": docx_path,
+                "content": generated_text,
+            }
 
         except Exception as e:
             return {"status": "error", "message": f"Произошла непредвиденная ошибка: {e}"}

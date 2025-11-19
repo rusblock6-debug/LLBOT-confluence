@@ -1,10 +1,21 @@
 # services/knowledge_service.py (Версия с GPT4All, Git, Confluence и локальными файлами)
 import os
+import numpy as np
+from typing import List
+
+# Shim для совместимости chromadb с NumPy 2.x
+# В NumPy 2.0 удалили np.float_ и ряд псевдонимов, которые всё ещё используют зависимости chromadb.
+if not hasattr(np, "float_"):
+    np.float_ = np.float64  # type: ignore[attr-defined]
+if not hasattr(np, "int_"):
+    np.int_ = np.int64  # type: ignore[attr-defined]
+if not hasattr(np, "uint"):
+    np.uint = np.uint64  # type: ignore[attr-defined]
+
 import chromadb
 from chromadb.config import Settings
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
-from typing import List
 
 # Импортируем наши старые сервисы для загрузки данных
 from services.git_service import load_git_knowledge
