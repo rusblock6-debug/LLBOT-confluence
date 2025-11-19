@@ -10,10 +10,12 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ORCHESTRATOR_URL = "http://127.0.0.1:8000/process"
+FEEDBACK_URL = "http://127.0.0.1:8000/feedback"
 
 # --- Определяем клавиатуры ---
 main_keyboard = [
-    [KeyboardButton('📄 Документ'), KeyboardButton('📝 Термин')]
+    [KeyboardButton('📄 Документ'), KeyboardButton('📝 Термин')],
+    [KeyboardButton('✏️ Правка')]
 ]
 main_markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=True, resize_keyboard=True)
 
@@ -27,6 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         'Выбери, что ты хочешь сделать:',
         reply_markup=main_markup
     )
+
 
 async def process_request(update: Update, context: ContextTypes.DEFAULT_TYPE, user_query: str, request_type: str, template_name: str = None) -> None:
     """Универсальная функция для отправки запроса на API и обработки ответа."""
@@ -62,6 +65,11 @@ async def process_request(update: Update, context: ContextTypes.DEFAULT_TYPE, us
                         await update.message.reply_document(document=doc, caption="Готово! Ваш документ.")
                 else:
                     await update.message.reply_text("Сервер сообщил об успехе, но файл не найден.")
+            elif result_type == "qa":
+                answer = result_info.get("answer", "")
+                if not answer:
+                    answer = "Ответ на вопрос не получен от сервера."
+                await update.message.reply_text(answer)
         else:
             error_message = result_info.get("message", "Неизвестная ошибка на сервере.")
             await update.message.reply_text(f'Не удалось обработать запрос. Причина: {error_message}')
@@ -94,6 +102,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif '📝 Термин' in user_text:
             context.user_data['action'] = 'term'
             await update.message.reply_text('Хорошо! Введи термин для поиска.')
+        elif '✏️ Правка' in user_text:
+            # Запускаем диалог по сбору правки
+            context.user_data['action'] = 'feedback'
+            context.user_data['feedback_step'] = 1
+            context.user_data['feedback_data'] = {}
+            await update.message.reply_text(
+                'Режим правки документации.\n'
+                'Шаг 1/6: Укажи тип документа (например: ТЗ, Руководство, Глоссарий, Другое).'
+            )
         else:
             # Пользователь ввел текст сразу, считаем что он хочет документ
             await process_request(update, context, user_text, 'document')
@@ -101,6 +118,97 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text('Выбери следующее действие:', reply_markup=main_markup)
     else:
         # --- Пользователь уже выбрал действие и вводит запрос ---
+        if current_action == 'feedback':
+            # Многошаговый сбор данных для правки
+            step = context.user_data.get('feedback_step', 1)
+            data = context.user_data.get('feedback_data', {})
+
+            if step == 1:
+                data['doc_type'] = user_text
+                context.user_data['feedback_step'] = 2
+                context.user_data['feedback_data'] = data
+                await update.message.reply_text('Шаг 2/6: Укажи документ или раздел (файл, пункт, краткое описание).')
+                return
+
+            if step == 2:
+                data['doc_ref'] = user_text
+                context.user_data['feedback_step'] = 3
+                context.user_data['feedback_data'] = data
+                await update.message.reply_text(
+                    'Шаг 3/6: Укажи тип операции: удалить / заменить / добавить / комментарий.'
+                )
+                return
+
+            if step == 3:
+                op_text = user_text.strip().lower()
+                if 'удал' in op_text:
+                    data['operation'] = 'delete'
+                elif 'замен' in op_text:
+                    data['operation'] = 'replace'
+                elif 'добав' in op_text:
+                    data['operation'] = 'add'
+                else:
+                    data['operation'] = 'comment'
+
+                context.user_data['feedback_step'] = 4
+                context.user_data['feedback_data'] = data
+                await update.message.reply_text('Шаг 4/6: Напиши текст, который БЫЛО (если нечего указывать, напиши "-").')
+                return
+
+            if step == 4:
+                data['old_text'] = user_text
+                context.user_data['feedback_step'] = 5
+                context.user_data['feedback_data'] = data
+                await update.message.reply_text('Шаг 5/6: Напиши текст, который ДОЛЖНО БЫТЬ (или "-", если только удаление/комментарий).')
+                return
+
+            if step == 5:
+                data['new_text'] = user_text
+                context.user_data['feedback_step'] = 6
+                context.user_data['feedback_data'] = data
+                await update.message.reply_text('Шаг 6/6: Добавь краткий комментарий для себя/команды (или "-").')
+                return
+
+            if step == 6:
+                data['comment'] = user_text
+
+                # Формируем payload для /feedback
+                author = update.effective_user.username or update.effective_user.full_name
+                payload = {
+                    "author": author,
+                    "doc_type": data.get('doc_type'),
+                    "doc_ref": data.get('doc_ref'),
+                    "operation": data.get('operation'),
+                    "old_text": data.get('old_text'),
+                    "new_text": data.get('new_text'),
+                    "comment": data.get('comment'),
+                }
+
+                try:
+                    resp = requests.post(FEEDBACK_URL, json=payload)
+                    resp.raise_for_status()
+                    info = resp.json()
+                    if info.get('status') == 'success':
+                        fp = info.get('file_path', '-')
+                        await update.message.reply_text(
+                            f'Правка сохранена локально. Файл: {fp}\n'
+                            f'Ты сможешь потом внести изменения в Git, ориентируясь на этот файл.'
+                        )
+                    else:
+                        await update.message.reply_text(
+                            f"Не удалось сохранить правку. Ответ сервера: {info.get('message', 'без сообщения')}"
+                        )
+                except Exception as e:
+                    await update.message.reply_text(f'Ошибка при отправке правки: {e}')
+
+                # Сбрасываем состояние и возвращаемся в главное меню
+                context.user_data['action'] = None
+                context.user_data.pop('feedback_step', None)
+                context.user_data.pop('feedback_data', None)
+                await update.message.reply_text('Правка зафиксирована. Что-нибудь еще?', reply_markup=main_markup)
+                return
+
+        # --- Обычные режимы: документ / термин ---
         request_type = current_action
         user_query = user_text
         template_name = None

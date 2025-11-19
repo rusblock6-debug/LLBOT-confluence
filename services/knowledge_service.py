@@ -153,7 +153,7 @@ class KnowledgeService:
         )
         print(f"База знаний успешно проиндексирована. Добавлено {len(chunks)} документов.")
 
-    def search_relevant_knowledge(self, query: str, n_results: int = 5) -> str:
+    def search_relevant_knowledge(self, query: str, n_results: int = 80) -> str:
         """Ищет релевантные чанки по запросу пользователя."""
         print(f"Ищу релевантную информацию по запросу: '{query}'")
         

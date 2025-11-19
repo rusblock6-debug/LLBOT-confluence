@@ -38,7 +38,7 @@ class LLMError(Exception):
     """Кастомный класс для ошибок LLM."""
     pass
 
-def generate_text(prompt: str, model: str = "minimax/minimax-m2:free") -> str:
+def generate_text(prompt: str, model: str = "kwaipilot/kat-coder-pro:free") -> str:
     print(f"Отправляю запрос в OpenRouter (модель: {model})...")
     
     # Проверяем ключ еще раз перед отправкой
@@ -49,6 +49,8 @@ def generate_text(prompt: str, model: str = "minimax/minimax-m2:free") -> str:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
+        # Разрешаем модели генерировать длинные развёрнутые ответы (подробные ТЗ/руководства)
+        "max_tokens": 4000,
     }
     
     headers = {
