@@ -1,6 +1,7 @@
 # main.py (ВЕРСИЯ С ЖЕСТКИМ ПОШАГОВЫМ ПРОМТОМ ДЛЯ ШАБЛОНОВ)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 import os
 from datetime import datetime
@@ -31,7 +32,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ks = KnowledgeService()
+# Инициализируем KnowledgeService с обработкой ошибок
+try:
+    ks = KnowledgeService()
+except Exception as e:
+    print(f"ОШИБКА при инициализации KnowledgeService: {e}")
+    print("Попытка пересоздать базу знаний...")
+    import shutil
+    if os.path.exists("./chroma_db"):
+        try:
+            shutil.rmtree("./chroma_db")
+            print("Старая база данных удалена.")
+        except Exception as rm_error:
+            print(f"Ошибка при удалении базы: {rm_error}")
+    ks = KnowledgeService()
+
+# --- Статические файлы ---
+# Раздаём viwer.html для доступа через ngrok/iframe
+@app.get("/viewer", response_class=HTMLResponse)
+def get_viewer():
+    """Возвращает HTML интерфейс viwer.html"""
+    viewer_path = os.path.join(os.path.dirname(__file__), "viwer.html")
+    if os.path.exists(viewer_path):
+        with open(viewer_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Viewer not found</h1>", status_code=404)
 
 # --- Pydantic Модели для запросов ---
 
@@ -432,3 +457,25 @@ def generate_documentation(request: RequestModel):
 def get_term_definition(request: TermRequestModel):
     """Эндпоинт для получения определения конкретного термина."""
     return process_user_request(ProcessRequestModel(query=request.term, request_type="term"))
+
+@app.get("/download/{filename:path}")
+def download_file(filename: str):
+    """Скачивание сгенерированных документов из папки output."""
+    # Убираем путь к папке output, если он есть в filename
+    if filename.startswith("output/"):
+        filename = filename[7:]  # Убираем "output/"
+    elif filename.startswith("output\\"):
+        filename = filename[7:]  # Убираем "output\"
+    
+    file_path = os.path.join("output", filename)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        # Проверяем, что файл находится в папке output (безопасность)
+        abs_file_path = os.path.abspath(file_path)
+        abs_output_dir = os.path.abspath("output")
+        if abs_file_path.startswith(abs_output_dir):
+            return FileResponse(
+                path=file_path,
+                filename=os.path.basename(filename),  # Только имя файла для скачивания
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+    return {"status": "error", "message": "Файл не найден"}

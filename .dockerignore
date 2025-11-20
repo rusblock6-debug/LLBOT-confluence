@@ -1,0 +1,59 @@
+# Виртуальные окружения
+venv/
+env/
+ENV/
+.venv
+
+# Переменные окружения (не копируем, используем env_file в docker-compose)
+.env
+.env.local
+.env.*.local
+
+# Кеши Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Локальные артефакты приложения (создаются в контейнере)
+chroma_db/
+output/
+feedback/
+*.log
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Документация и временные файлы
+*.md
+!README.md
+*.tmp
+*.bak
+*.cache
+
+# Тесты (не нужны в production)
+tests/
+test_*.py
+*_test.py
+
+# Docker файлы (не нужны внутри контейнера)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Другие служебные файлы
+*.db
+*.sqlite
+*.sqlite3
+

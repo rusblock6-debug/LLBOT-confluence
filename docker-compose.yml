@@ -1,0 +1,42 @@
+services:
+  # Основной сервис приложения (FastAPI)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart_writer_api
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Персистентность данных
+      - ./chroma_db:/app/chroma_db
+      - ./output:/app/output
+      - ./feedback:/app/feedback
+      # Статические файлы (viwer.html)
+      - ./viwer.html:/app/viwer.html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Сервис для создания туннеля в интернет (опционально)
+  # Для использования ngrok на хосте вместо контейнера, закомментируйте этот сервис
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: smart_writer_ngrok
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "4040:4040"
+    environment:
+      # Добавьте NGROK_AUTHTOKEN в .env файл для использования ngrok
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+    command: ["http", "api:8000", "--log=stdout"]
+    restart: unless-stopped
+

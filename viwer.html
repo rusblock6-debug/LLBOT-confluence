@@ -639,6 +639,10 @@
         setResultType('—');
 
         try {
+          // Создаем AbortController для таймаута (10 минут для длительных запросов)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 минут
+
           const resp = await fetch(API_BASE + '/process', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -646,16 +650,34 @@
               query: query,
               request_type: requestType,
               template_name: templateName || null
-            })
+            }),
+            signal: controller.signal
           });
+
+          clearTimeout(timeoutId);
 
           const httpStatus = resp.status + ' ' + resp.statusText;
           let data = null;
 
-          try {
-            data = await resp.json();
-          } catch (e) {
-            data = { status: 'error', message: 'Не удалось разобрать JSON‑ответ: ' + e };
+          // Проверяем Content-Type перед парсингом JSON
+          const contentType = resp.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            // Если сервер вернул HTML (например, страницу ошибки), читаем как текст
+            const text = await resp.text();
+            data = { 
+              status: 'error', 
+              message: `Сервер вернул не JSON (${contentType}). Возможно, произошла ошибка на сервере или таймаут. HTTP статус: ${resp.status}. Первые 200 символов ответа: ${text.substring(0, 200)}` 
+            };
+          } else {
+            try {
+              data = await resp.json();
+            } catch (e) {
+              const text = await resp.text();
+              data = { 
+                status: 'error', 
+                message: 'Не удалось разобрать JSON‑ответ: ' + e + '. Первые 200 символов ответа: ' + text.substring(0, 200) 
+              };
+            }
           }
 
           rawJsonEl.textContent = JSON.stringify(data, null, 2);
@@ -701,8 +723,13 @@
             fileInfoEl.textContent = '';
           }
         } catch (err) {
-          setStatus('Ошибка сети или CORS при вызове /process: ' + err, false, 'network');
-          resultTextEl.textContent = 'Ошибка сети/CORS: ' + err;
+          if (err.name === 'AbortError') {
+            setStatus('Таймаут запроса (превышено 10 минут). Запрос слишком долгий.', false, 'timeout');
+            resultTextEl.textContent = 'Ошибка: Запрос занял слишком много времени (более 10 минут). Попробуйте упростить запрос или разбить его на части.';
+          } else {
+            setStatus('Ошибка сети или CORS при вызове /process: ' + err, false, 'network');
+            resultTextEl.textContent = 'Ошибка сети/CORS: ' + err;
+          }
           setResultType('—');
         } finally {
           sendBtn.disabled = false;

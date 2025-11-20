@@ -221,3 +221,4 @@ class KnowledgeService:
         print(f"Найдено {len(retrieved_chunks)} релевантных чанков.")
         
         return context
+
