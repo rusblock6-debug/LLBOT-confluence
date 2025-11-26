@@ -1,0 +1,867 @@
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Writer Viewer (Git/Confluence)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --bg-elevated: #ffffff;
+      --border: #d1d5db;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59, 130, 246, 0.08);
+      --text: #111827;
+      --text-muted: #6b7280;
+      --danger: #b91c1c;
+      --success: #166534;
+      --radius: 10px;
+      --shadow: 0 14px 30px rgba(15, 23, 42, 0.15);
+      --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 1200px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header {
+      padding: 16px 20px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #2c3e50, #34495e);
+      border: none;
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #f9fafb;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0.04em;
+    }
+
+    header span {
+      font-size: 12px;
+      color: #e5e7eb;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 12px;
+      }
+      main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .panel {
+      background: var(--bg-elevated);
+      border-radius: var(--radius);
+      border: 1px solid #e5e7eb;
+      box-shadow: var(--shadow);
+      padding: 16px 18px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel h2 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      display: block;
+    }
+
+    textarea,
+    input,
+    select {
+      width: 100%;
+      margin-top: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      color: var(--text);
+      padding: 8px 9px;
+      font-family: var(--font);
+      font-size: 13px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    textarea:focus,
+    input:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35);
+      background: #ffffff;
+    }
+
+    textarea {
+      min-height: 120px;
+      max-height: 320px;
+    }
+
+    #requestPanel #query {
+      min-height: 48px;
+      max-height: 120px;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 9px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: #f9fafb;
+      cursor: pointer;
+      align-self: flex-start;
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 12px 30px rgba(37, 99, 235, 0.45);
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.1s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 40px rgba(37, 99, 235, 0.6);
+    }
+
+    button:active {
+      transform: translateY(0px) scale(0.99);
+      box-shadow: 0 8px 22px rgba(37, 99, 235, 0.45);
+    }
+
+    button[disabled] {
+      opacity: 0.55;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      box-shadow: none;
+      padding-inline: 14px;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.6);
+      transform: none;
+    }
+
+    .field-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .field-row > * {
+      flex: 1 1 0;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .status-line {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status-line span.code {
+      font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .status-pill {
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .status-pill.ok {
+      border-color: rgba(74, 222, 128, 0.7);
+      color: var(--success);
+    }
+
+    .status-pill.err {
+      border-color: rgba(248, 113, 113, 0.7);
+      color: var(--danger);
+    }
+
+    pre {
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      max-height: 380px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #responsePanel #resultText {
+      margin: 8px 0 0;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid #e5e7eb;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      max-height: 60vh;
+      overflow: auto;
+    }
+
+    details pre#rawJson {
+      background: #111827;
+      color: #e5e7eb;
+      border: 1px solid #4b5563;
+      font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      max-height: 280px;
+    }
+
+    details {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    summary {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .file-info {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .file-info a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .file-info a:hover {
+      text-decoration: underline;
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(31, 41, 55, 0.9);
+      color: var(--text-muted);
+    }
+
+    footer {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: right;
+      padding: 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Smart Writer Viewer</h1>
+        <span>Костыль с гитом</span>
+      </div>
+      <span id="apiBaseLabel"></span>
+    </header>
+
+    <main>
+      <section class="panel" id="requestPanel">
+        <h2>Запрос к системе</h2>
+
+        <div class="field-row">
+          <div>
+            <label for="requestType">Тип запроса</label>
+            <select id="requestType">
+              <option value="document">Документ</option>
+              <option value="term">Термин</option>
+            </select>
+          </div>
+          <div>
+            <label for="templateName">Имя шаблона DOCX (опционально)</label>
+            <input id="templateName" placeholder="например: GOST34_TZ.docx" />
+          </div>
+        </div>
+
+        <label for="query">Текст запроса / термин</label>
+        <textarea id="query" placeholder="Например: Создай техническое задание для модуля отчётности АСУ ПГР"></textarea>
+
+        <div class="hint">
+          Документы: система сама определит, это ТЗ или Руководство пользователя.<br />
+          Вопросы (Q&A): просто задайте вопрос на естественном языке, без слова "ТЗ".
+        </div>
+
+        <div class="field-row" style="margin-top: 10px; align-items: center;">
+          <button id="sendBtn">
+            <span>Отправить в /process</span>
+          </button>
+          <button type="button" class="btn-secondary" id="fillTzExample">Пример ТЗ</button>
+          <button type="button" class="btn-secondary" id="fillQaExample">Пример Q&amp;A</button>
+        </div>
+      </section>
+
+      <section class="panel" id="responsePanel">
+        <h2>Ответ системы</h2>
+        <div id="statusLine" class="status-line">
+          <span class="code">Ожидание запросаf</span>
+          <span class="status-pill">idle</span>
+        </div>
+
+        <div class="pill-row">
+          <div class="pill" id="resultTypePill">Тип результата: ff</div>
+          <div class="pill" id="httpStatusPill">HTTP: ff</div>
+        </div>
+
+        <div id="resultText">Здесь появится определение термина, ответ Q&amp;A или путь к сгенерированному документу.</div>
+
+        <div class="file-info" id="fileInfo"></div>
+
+        <div class="field-row" style="margin-top: 8px; justify-content: flex-end;">
+          <button type="button" class="btn-secondary" id="downloadDocBtn">Скачать .doc</button>
+        </div>
+
+        <details>
+          <summary>Сырой JSONответ</summary>
+          <pre id="rawJson">f</pre>
+        </details>
+      </section>
+    </main>
+
+    <section class="panel" id="feedbackPanel">
+      <h2>Отправить правку документации (/feedback)</h2>
+
+      <form id="feedbackForm">
+        <div class="field-row">
+          <div>
+            <label for="fbAuthor">Автор</label>
+            <input id="fbAuthor" placeholder="@username или ФИО" />
+          </div>
+          <div>
+            <label for="fbDocType">Тип документа</label>
+            <input id="fbDocType" placeholder="ТЗ, Руководство, Регламентf" />
+          </div>
+        </div>
+
+        <label for="fbDocRef">Документ / раздел</label>
+        <input id="fbDocRef" placeholder="Например: ТЗ АСУ ПГР / раздел 4.3" />
+
+        <label for="fbOperation">Операция</label>
+        <select id="fbOperation">
+          <option value="comment">comment</option>
+          <option value="replace">replace</option>
+          <option value="add">add</option>
+          <option value="delete">delete</option>
+        </select>
+
+        <label for="fbOldText">Было</label>
+        <textarea id="fbOldText" placeholder="Фрагмент текста до правки (опционально)"></textarea>
+
+        <label for="fbNewText">Стало</label>
+        <textarea id="fbNewText" placeholder="Новая формулировка (если есть)"></textarea>
+
+        <label for="fbComment">Комментарий</label>
+        <textarea id="fbComment" placeholder="Пояснение, причина изменения"></textarea>
+
+        <div class="field-row" style="margin-top: 10px; align-items: center;">
+          <button type="submit" id="feedbackBtn">
+            <span>Отправить в /feedback</span>
+          </button>
+          <button type="button" class="btn-secondary" id="clearFeedback">Очистить форму</button>
+        </div>
+      </form>
+
+      <div class="hint" id="feedbackStatus">Статус: форма ещё не отправлялась.</div>
+    </section>
+
+    <footer>
+      git-viwer.html f страница для GitPage / Confluence. Можно передать ?api=https://fNGROKfDOMAINf.ngrok-free.dev для подключения к удалённому API.
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      // Базовый адрес API: по умолчанию
+      // - при открытии локально (file://) f http://localhost:8000
+      // - при открытии с веб-домена f самому домену (можно проксировать бекенд)
+      const isFile = window.location.protocol === 'file:';
+      const DEFAULT_API_BASE = isFile ? 'http://localhost:8000' : (window.location.origin || 'http://localhost:8000');
+      let API_BASE = DEFAULT_API_BASE;
+
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        const apiParam = params.get('api');
+        if (apiParam) {
+          API_BASE = apiParam;
+        }
+      } catch (e) {
+        // В случае ошибки просто оставляем DEFAULT_API_BASE
+      }
+
+      const apiBaseLabel = document.getElementById('apiBaseLabel');
+      if (apiBaseLabel) {
+        apiBaseLabel.textContent = 'API: ' + API_BASE;
+      }
+
+      const requestTypeEl = document.getElementById('requestType');
+      const templateNameEl = document.getElementById('templateName');
+      const queryEl = document.getElementById('query');
+      const sendBtn = document.getElementById('sendBtn');
+      const statusLineEl = document.getElementById('statusLine');
+      const resultTextEl = document.getElementById('resultText');
+      const rawJsonEl = document.getElementById('rawJson');
+      const fileInfoEl = document.getElementById('fileInfo');
+      const resultTypePill = document.getElementById('resultTypePill');
+      const httpStatusPill = document.getElementById('httpStatusPill');
+
+      const fillTzExampleBtn = document.getElementById('fillTzExample');
+      const fillQaExampleBtn = document.getElementById('fillQaExample');
+      const downloadDocBtn = document.getElementById('downloadDocBtn');
+
+      let lastResultType = 'f';
+
+      const fbForm = document.getElementById('feedbackForm');
+      const fbAuthor = document.getElementById('fbAuthor');
+      const fbDocType = document.getElementById('fbDocType');
+      const fbDocRef = document.getElementById('fbDocRef');
+      const fbOperation = document.getElementById('fbOperation');
+      const fbOldText = document.getElementById('fbOldText');
+      const fbNewText = document.getElementById('fbNewText');
+      const fbComment = document.getElementById('fbComment');
+      const fbBtn = document.getElementById('feedbackBtn');
+      const fbStatus = document.getElementById('feedbackStatus');
+      const clearFeedbackBtn = document.getElementById('clearFeedback');
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function markdownInline(text) {
+        let t = escapeHtml(text);
+        t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1<\/strong>');
+        t = t.replace(/__(.+?)__/g, '<strong>$1<\/strong>');
+        t = t.replace(/`([^`]+)`/g, '<code>$1<\/code>');
+        t = t.replace(/(\s|^)\*(.+?)\*(\s|$)/g, '$1<em>$2<\/em>$3');
+        t = t.replace(/(\s|^)_([^_]+)_(\s|$)/g, '$1<em>$2<\/em>$3');
+        return t;
+      }
+
+      function markdownToHtml(md) {
+        if (!md) return '';
+        const lines = String(md).split(/\r?\n/);
+        const html = [];
+        let inList = false;
+        let listType = null;
+
+        function closeList() {
+          if (inList) {
+            html.push('<\/' + listType + '>');
+            inList = false;
+            listType = null;
+          }
+        }
+
+        for (let rawLine of lines) {
+          const line = rawLine.replace(/\s+$/, '');
+          if (!line.trim()) {
+            closeList();
+            html.push('<p><\/p>');
+            continue;
+          }
+
+          const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+          if (headingMatch) {
+            closeList();
+            const level = headingMatch[1].length;
+            const text = headingMatch[2].trim();
+            html.push('<h' + level + '>' + markdownInline(text) + '<\/h' + level + '>');
+            continue;
+          }
+
+          const olMatch = line.match(/^(\d+)\.\s+(.*)$/);
+          if (olMatch) {
+            if (!inList || listType !== 'ol') {
+              closeList();
+              inList = true;
+              listType = 'ol';
+              html.push('<ol>');
+            }
+            html.push('<li>' + markdownInline(olMatch[2].trim()) + '<\/li>');
+            continue;
+          }
+
+          const ulMatch = line.match(/^[-*+]\s+(.*)$/);
+          if (ulMatch) {
+            if (!inList || listType !== 'ul') {
+              closeList();
+              inList = true;
+              listType = 'ul';
+              html.push('<ul>');
+            }
+            html.push('<li>' + markdownInline(ulMatch[1].trim()) + '<\/li>');
+            continue;
+          }
+
+          closeList();
+          html.push('<p>' + markdownInline(line.trim()) + '<\/p>');
+        }
+
+        closeList();
+        return html.join('\n');
+      }
+
+      function setStatus(text, ok, httpStatus) {
+        if (!statusLineEl) return;
+        statusLineEl.querySelector('.code').textContent = text;
+        const pill = statusLineEl.querySelector('.status-pill');
+        pill.textContent = ok ? 'ok' : 'error';
+        pill.classList.toggle('ok', !!ok);
+        pill.classList.toggle('err', !ok);
+
+        if (httpStatusPill) {
+          httpStatusPill.textContent = 'HTTP: ' + (httpStatus || 'f');
+        }
+      }
+
+      function setResultType(type) {
+        lastResultType = type || 'f';
+        if (!resultTypePill) return;
+        resultTypePill.textContent = 'Тип результата: ' + lastResultType;
+      }
+
+      async function sendProcessRequest() {
+        const requestType = requestTypeEl.value;
+        const query = (queryEl.value || '').trim();
+        const templateName = (templateNameEl.value || '').trim();
+
+        if (!query) {
+          alert('Введите текст запроса или термин.');
+          return;
+        }
+
+        sendBtn.disabled = true;
+        setStatus('Отправка запроса в /processff', true, 'f');
+        resultTextEl.textContent = '';
+        rawJsonEl.textContent = '';
+        fileInfoEl.textContent = '';
+        setResultType('f');
+
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 минут
+
+          const resp = await fetch(API_BASE + '/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: query,
+              request_type: requestType,
+              template_name: templateName || null
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+
+          const httpStatus = resp.status + ' ' + resp.statusText;
+          let data = null;
+
+          const contentType = resp.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            const text = await resp.text();
+            data = {
+              status: 'error',
+              message: `Сервер вернул не JSON (${contentType}). Возможно, произошла ошибка на сервере или таймаут. HTTP статус: ${resp.status}. Первые 200 символов ответа: ${text.substring(0, 200)}`
+            };
+          } else {
+            try {
+              data = await resp.json();
+            } catch (e) {
+              const text = await resp.text();
+              data = {
+                status: 'error',
+                message: 'Не удалось разобрать JSONответ: ' + e + '. Первые 200 символов ответа: ' + text.substring(0, 200)
+              };
+            }
+          }
+
+          rawJsonEl.textContent = JSON.stringify(data, null, 2);
+
+          if (!resp.ok || data.status !== 'success') {
+            const message = (data && (data.message || data.detail)) || 'Неизвестная ошибка';
+            setStatus('Ошибка при вызове /process: ' + message, false, httpStatus);
+            resultTextEl.textContent = 'Ошибка: ' + message;
+            setResultType(data && data.result_type ? data.result_type : 'f');
+            return;
+          }
+
+          const resultType = data.result_type || 'f';
+          setResultType(resultType);
+          setStatus('Успешный ответ от /process', true, httpStatus);
+
+          if (resultType === 'term') {
+            resultTextEl.textContent = data.definition || '[пустое определение]';
+            fileInfoEl.textContent = '';
+          } else if (resultType === 'qa') {
+            const content = data.answer || '';
+            if (content) {
+              const html = markdownToHtml(content);
+              resultTextEl.innerHTML = html;
+            } else {
+              resultTextEl.textContent = '[пустой ответ]';
+            }
+            fileInfoEl.textContent = '';
+          } else if (resultType === 'document') {
+            const content = data.content || '';
+            if (content) {
+              const html = markdownToHtml(content);
+              resultTextEl.innerHTML = html;
+            } else {
+              resultTextEl.textContent = 'Документ сгенерирован, но текст не был передан. См. путь к файлу ниже.';
+            }
+
+            const filePath = data.file_path || '';
+            if (filePath) {
+              const text = 'Файл DOCX сохранён на сервере: ' + filePath + '\n' +
+                'Если сервер настроен на раздачу статики, вы сможете скачать его по этому пути.';
+              fileInfoEl.textContent = text;
+            } else {
+              fileInfoEl.textContent = 'Путь к сгенерированному файлу не был возвращён.';
+            }
+          } else {
+            resultTextEl.textContent = 'Неизвестный тип результата. См. JSON ниже.';
+            fileInfoEl.textContent = '';
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            setStatus('Таймаут запроса (превышено 10 минут). Запрос слишком долгий.', false, 'timeout');
+            resultTextEl.textContent = 'Ошибка: Запрос занял слишком много времени (более 10 минут). Попробуйте упростить запрос или разбить его на части.';
+          } else {
+            setStatus('Ошибка сети или CORS при вызове /process: ' + err, false, 'network');
+            resultTextEl.textContent = 'Ошибка сети/CORS: ' + err;
+          }
+          setResultType('f');
+        } finally {
+          sendBtn.disabled = false;
+        }
+      }
+
+      async function sendFeedback(event) {
+        event.preventDefault();
+
+        const payload = {
+          author: (fbAuthor.value || '').trim() || null,
+          doc_type: (fbDocType.value || '').trim() || null,
+          doc_ref: (fbDocRef.value || '').trim() || null,
+          operation: (fbOperation.value || '').trim() || null,
+          old_text: (fbOldText.value || '').trim() || null,
+          new_text: (fbNewText.value || '').trim() || null,
+          comment: (fbComment.value || '').trim() || null
+        };
+
+        fbBtn.disabled = true;
+        fbStatus.textContent = 'Отправка в /feedbackff';
+
+        try {
+          const resp = await fetch(API_BASE + '/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const httpStatus = resp.status + ' ' + resp.statusText;
+          let data = null;
+
+          try {
+            data = await resp.json();
+          } catch (e) {
+            data = { status: 'error', message: 'Не удалось разобрать JSONответ: ' + e };
+          }
+
+          if (!resp.ok || data.status !== 'success') {
+            const message = (data && (data.message || data.detail)) || 'Неизвестная ошибка';
+            fbStatus.textContent = 'Ошибка (' + httpStatus + '): ' + message;
+            fbStatus.style.color = '#f97373';
+            return;
+          }
+
+          const filePath = data.file_path || '';
+          fbStatus.textContent = 'Правка сохранена. Файл: ' + filePath;
+          fbStatus.style.color = '#4ade80';
+        } catch (err) {
+          fbStatus.textContent = 'Ошибка сети/CORS при вызове /feedback: ' + err;
+          fbStatus.style.color = '#f97373';
+        } finally {
+          fbBtn.disabled = false;
+        }
+      }
+
+      function clearFeedbackForm() {
+        fbAuthor.value = '';
+        fbDocType.value = '';
+        fbDocRef.value = '';
+        fbOperation.value = 'comment';
+        fbOldText.value = '';
+        fbNewText.value = '';
+        fbComment.value = '';
+        fbStatus.textContent = 'Статус: форма очищена, ещё не отправлялась.';
+        fbStatus.style.color = '';
+      }
+
+      function downloadAsDoc() {
+        if (!resultTextEl) return;
+        if (lastResultType !== 'document') {
+          alert('Скачать .doc можно только для сгенерированного документа.');
+          return;
+        }
+        const htmlContent = resultTextEl.innerHTML.trim();
+        if (!htmlContent) {
+          alert('Нет содержимого для сохранения.');
+          return;
+        }
+        const docTitle = 'document';
+        const fullHtml =
+          '<!DOCTYPE html>' +
+          '<html><head><meta charset="UTF-8"><title>' + docTitle + '</title></head>' +
+          '<body>' + htmlContent + '</body></html>';
+
+        const blob = new Blob([fullHtml], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = docTitle + '.doc';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      if (sendBtn) {
+        sendBtn.addEventListener('click', sendProcessRequest);
+      }
+
+      if (queryEl) {
+        queryEl.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            sendProcessRequest();
+          }
+        });
+      }
+
+      if (fbForm) {
+        fbForm.addEventListener('submit', sendFeedback);
+      }
+
+      if (clearFeedbackBtn) {
+        clearFeedbackBtn.addEventListener('click', clearFeedbackForm);
+      }
+
+      if (downloadDocBtn) {
+        downloadDocBtn.addEventListener('click', downloadAsDoc);
+      }
+
+      if (fillTzExampleBtn) {
+        fillTzExampleBtn.addEventListener('click', function () {
+          requestTypeEl.value = 'document';
+          queryEl.value = 'Создай техническое задание для модуля отчётности АСУ ПГР';
+        });
+      }
+
+      if (fillQaExampleBtn) {
+        fillQaExampleBtn.addEventListener('click', function () {
+          requestTypeEl.value = 'document';
+          queryEl.value = 'Какие основные функции есть у цифрового двойника карьера?';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
