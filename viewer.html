@@ -464,7 +464,7 @@
     </section>
 
     <footer>
-      viwer.html — лёгкий просмотрщик поверх FastAPI. Откройте файл в браузере и убедитесь, что бекенд запущен на http://localhost:8000.
+      viewer.html — лёгкий просмотрщик поверх FastAPI. Откройте файл в браузере и убедитесь, что бекенд запущен на http://localhost:8000.
     </footer>
   </div>
 
@@ -641,7 +641,7 @@
         try {
           // Создаем AbortController для таймаута (10 минут для длительных запросов)
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 минут
+          const timeoutId = setTimeout(() => controller.abort(), 1200000); // 20 минут
 
           const resp = await fetch(API_BASE + '/process', {
             method: 'POST',
@@ -698,7 +698,21 @@
             resultTextEl.textContent = data.definition || '[пустое определение]';
             fileInfoEl.textContent = '';
           } else if (resultType === 'qa') {
-            resultTextEl.textContent = data.answer || '[пустой ответ]';
+            const answer = data.answer || '[пустой ответ]';
+            const html = markdownToHtml(answer);
+            resultTextEl.innerHTML = html;
+            
+            // Добавляем изображения, если они есть
+            if (data.images && data.images.length > 0) {
+              const imagesHtml = data.images.map(img => 
+                `<div style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                  <img src="${img.url}" alt="${img.name}" style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+                  <p style="margin: 8px 0 0; font-size: 12px; color: var(--text-muted);">${img.name}</p>
+                </div>`
+              ).join('');
+              resultTextEl.innerHTML += '<div style="margin-top: 20px;"><h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-muted);">Связанные изображения:</h3>' + imagesHtml + '</div>';
+            }
+            
             fileInfoEl.textContent = '';
           } else if (resultType === 'document') {
             const content = data.content || '';
@@ -706,6 +720,17 @@
               const html = markdownToHtml(content);
               // Показываем документ как отформатированный HTML (заголовки, списки и т.д.)
               resultTextEl.innerHTML = html;
+              
+              // Добавляем изображения, если они есть
+              if (data.images && data.images.length > 0) {
+                const imagesHtml = data.images.map(img => 
+                  `<div style="margin: 16px 0; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <img src="${img.url}" alt="${img.name}" style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
+                    <p style="margin: 8px 0 0; font-size: 12px; color: var(--text-muted);">${img.name}</p>
+                  </div>`
+                ).join('');
+                resultTextEl.innerHTML += '<div style="margin-top: 20px;"><h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-muted);">Связанные изображения:</h3>' + imagesHtml + '</div>';
+              }
             } else {
               resultTextEl.textContent = 'Документ сгенерирован, но текст не был передан. См. путь к файлу ниже.';
             }
@@ -718,14 +743,24 @@
             } else {
               fileInfoEl.textContent = 'Путь к сгенерированному файлу не был возвращён.';
             }
+            
+            // Показываем определенную систему, если есть
+            if (data.system) {
+              const systemLabel = data.system === 'asupgr' ? 'АСУ ПГР' : 'Цифровой двойник';
+              if (fileInfoEl.textContent) {
+                fileInfoEl.textContent += '\nОпределенная система: ' + systemLabel;
+              } else {
+                fileInfoEl.textContent = 'Определенная система: ' + systemLabel;
+              }
+            }
           } else {
             resultTextEl.textContent = 'Неизвестный тип результата. См. JSON ниже.';
             fileInfoEl.textContent = '';
           }
         } catch (err) {
           if (err.name === 'AbortError') {
-            setStatus('Таймаут запроса (превышено 10 минут). Запрос слишком долгий.', false, 'timeout');
-            resultTextEl.textContent = 'Ошибка: Запрос занял слишком много времени (более 10 минут). Попробуйте упростить запрос или разбить его на части.';
+            setStatus('Таймаут запроса (превышено 20 минут). Запрос слишком долгий.', false, 'timeout');
+            resultTextEl.textContent = 'Ошибка: Запрос занял слишком много времени (более 20 минут). Попробуйте упростить запрос или разбить его на части.';
           } else {
             setStatus('Ошибка сети или CORS при вызове /process: ' + err, false, 'network');
             resultTextEl.textContent = 'Ошибка сети/CORS: ' + err;

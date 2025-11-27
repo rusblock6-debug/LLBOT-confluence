@@ -14,8 +14,8 @@ services:
       - ./chroma_db:/app/chroma_db
       - ./output:/app/output
       - ./feedback:/app/feedback
-      # Статические файлы (viwer.html)
-      - ./viwer.html:/app/viwer.html:ro
+      # Статические файлы (viewer.html)
+      - ./viewer.html:/app/viewer.html:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
@@ -39,4 +39,5 @@ services:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
     command: ["http", "api:8000", "--log=stdout"]
     restart: unless-stopped
+
 

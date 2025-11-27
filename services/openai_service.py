@@ -1,49 +1,31 @@
-# services/openai_service.py (ВЕРСИЯ С УСИЛЕННОЙ ДИАГНОСТИКОЙ .env)
+"""OpenAI/OpenRouter service for text generation."""
 import requests
 import json
 import os
 from dotenv import load_dotenv, find_dotenv
 
-# --- НАЧАЛО БЛОКА ДИАГНОСТИКИ ---
-print("--- ДИАГНОСТИКА ЗАГРУЗКИ .env ---")
-# Пытаемся найти файл .env
-dotenv_path = find_dotenv()
-print(f"Поиск файла .env... Найден по пути: {dotenv_path}")
+# Загружаем переменные окружения
+load_dotenv(find_dotenv())
 
-if dotenv_path:
-    # Загружаем переменные из найденного файла
-    load_result = load_dotenv(dotenv_path)
-    print(f"Результат загрузки load_dotenv(): {load_result}")
-else:
-    print("ОШИБКА: Файл .env не найден!")
-
-# Пытаемся прочитать переменную
-api_key = os.getenv("OPENROUTER_API_KEY")
-print(f"Значение os.getenv('OPENROUTER_API_KEY'): {api_key}")
-
-if api_key:
-    print(f"Длина ключа: {len(api_key)} символов.")
-    print(f"Первые 10 символов ключа: {api_key[:10]}...")
-else:
-    print("ОШИБКА: Ключ не был загружен!")
-print("--- КОНЕЦ БЛОКА ДИАГНОСТИКИ ---")
-# --- КОНЕЦ БЛОКА ДИАГНОСТИКИ ---
-
-
-# Используем переменную, которую мы проверили
-OPENROUTER_API_KEY = api_key
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+if not OPENROUTER_API_KEY:
+    print("ПРЕДУПРЕЖДЕНИЕ: OPENROUTER_API_KEY не найден в переменных окружения.")
+
 
 class LLMError(Exception):
     """Кастомный класс для ошибок LLM."""
     pass
 
+
 def generate_text(prompt: str, model: str = "kwaipilot/kat-coder-pro:free") -> str:
+    """Генерирует текст с помощью OpenRouter API."""
     print(f"Отправляю запрос в OpenRouter (модель: {model})...")
     
     # Проверяем ключ еще раз перед отправкой
     if not OPENROUTER_API_KEY:
-        raise LLMError("API ключ не загружен. Проверьте вывод диагностики при старте.")
+        raise LLMError("API ключ не загружен. Проверьте переменную OPENROUTER_API_KEY в .env файле.")
 
     payload = {
         "model": model,

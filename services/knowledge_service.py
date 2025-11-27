@@ -23,38 +23,78 @@ from services.confluence_service import search_confluence # Он нам пона
 
 class KnowledgeService:
     def __init__(self, persist_directory: str = "./chroma_db"):
-        """Инициализирует ChromaDB и модель GPT4All."""
+        """Инициализирует ChromaDB и модель GPT4All для двух систем."""
         self.persist_directory = persist_directory
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-        # Пытаемся получить или создать коллекцию с обработкой ошибок миграции
-        try:
-            self.collection = self.client.get_or_create_collection(name="asupgr_knowledge")
-        except Exception as e:
-            # Если ошибка связана с несовместимостью схемы БД, удаляем старую базу
-            if "no such column" in str(e) or "OperationalError" in str(type(e).__name__):
-                print(f"Обнаружена несовместимость схемы базы данных ChromaDB: {e}")
-                print("Удаляю старую базу данных для создания новой...")
-                import shutil
-                if os.path.exists(persist_directory):
-                    try:
-                        shutil.rmtree(persist_directory)
-                        print(f"Старая база данных удалена: {persist_directory}")
-                    except Exception as rm_error:
-                        print(f"Ошибка при удалении базы: {rm_error}")
-                
-                # Пересоздаём клиент и коллекцию
-                self.client = chromadb.PersistentClient(path=persist_directory)
-                self.collection = self.client.get_or_create_collection(name="asupgr_knowledge")
-                print("Новая база данных ChromaDB создана успешно.")
-            else:
-                # Если это другая ошибка, пробрасываем её дальше
-                raise
+        # Создаем отдельные коллекции для каждой системы
+        self.collections = {}
+        systems = ["asupgr", "digital_twin"]
+        
+        for system in systems:
+            collection_name = f"{system}_knowledge"
+            try:
+                self.collections[system] = self.client.get_or_create_collection(name=collection_name)
+                print(f"Коллекция '{collection_name}' готова к работе.")
+            except Exception as e:
+                # Если ошибка связана с несовместимостью схемы БД, удаляем старую базу
+                if "no such column" in str(e) or "OperationalError" in str(type(e).__name__):
+                    print(f"Обнаружена несовместимость схемы базы данных ChromaDB: {e}")
+                    print("Удаляю старую базу данных для создания новой...")
+                    import shutil
+                    if os.path.exists(persist_directory):
+                        try:
+                            shutil.rmtree(persist_directory)
+                            print(f"Старая база данных удалена: {persist_directory}")
+                        except Exception as rm_error:
+                            print(f"Ошибка при удалении базы: {rm_error}")
+                    
+                    # Пересоздаём клиент и коллекции
+                    self.client = chromadb.PersistentClient(path=persist_directory)
+                    self.collections[system] = self.client.get_or_create_collection(name=collection_name)
+                    print(f"Новая коллекция '{collection_name}' создана успешно.")
+                else:
+                    # Если это другая ошибка, пробрасываем её дальше
+                    raise
         
         # Инициализируем модель GPT4All. Она скачает модель при первом запуске.
         print("Инициализирую модель GPT4All для эмбеддингов...")
         self.embedding_model = GPT4AllEmbeddings()
         print("Модель GPT4All готова к работе.")
+    
+    def detect_system_from_query(self, query: str) -> str | None:
+        """
+        Определяет систему из запроса пользователя.
+        
+        Returns:
+            "asupgr", "digital_twin" или None (если не удалось определить)
+        """
+        query_lower = query.lower()
+        
+        # Ключевые слова для АСУ ПГР
+        asupgr_keywords = [
+            "асу пгр", "асупгр", "пгр", "планово-геологический",
+            "планово геологический", "планово-геологическая", "планово геологическая"
+        ]
+        
+        # Ключевые слова для Цифрового двойника
+        digital_twin_keywords = [
+            "цифровой двойник", "цифрового двойника", "цифровому двойнику",
+            "цифровым двойником", "двойник", "карьер", "экскаватор", "самосвал",
+            "бульдозер", "склад", "складской", "склада"
+        ]
+        
+        # Проверяем наличие ключевых слов
+        asupgr_score = sum(1 for keyword in asupgr_keywords if keyword in query_lower)
+        digital_twin_score = sum(1 for keyword in digital_twin_keywords if keyword in query_lower)
+        
+        if asupgr_score > 0 and asupgr_score >= digital_twin_score:
+            return "asupgr"
+        elif digital_twin_score > 0:
+            return "digital_twin"
+        
+        # Если не удалось определить, возвращаем None (будет использоваться общий поиск)
+        return None
 
     def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
         """Разбивает большой текст на пересекающиеся чанки."""
@@ -161,63 +201,136 @@ class KnowledgeService:
             print(f"    Произошла ошибка при загрузке из Confluence: {e}")
             return ""
 
-    def create_knowledge_base(self):
-        """Индексирует все знания из Git, Confluence и локальных файлов в векторную базу."""
-        print("Начинаю индексацию базы знаний из всех источников...")
+    def create_knowledge_base(self, system: str = None):
+        """
+        Индексирует все знания из Git, Confluence и локальных файлов в векторную базу для указанной системы.
         
-        # 1. Загружаем данные из всех источников
-        print("Загрузка данных из Git...")
-        git_text = load_git_knowledge()
+        Args:
+            system: "asupgr" или "digital_twin". Если None, индексирует обе системы.
+        """
+        systems_to_index = [system] if system else ["asupgr", "digital_twin"]
+        
+        for sys in systems_to_index:
+            if sys not in self.collections:
+                print(f"Пропускаю неизвестную систему: {sys}")
+                continue
+                
+            print(f"\n{'='*60}")
+            print(f"Начинаю индексацию базы знаний для системы: {sys.upper()}")
+            print(f"{'='*60}")
+            
+            # 1. Загружаем данные из Git для конкретной системы
+            print(f"Загрузка данных из Git для {sys}...")
+            git_text = load_git_knowledge(system=sys)
 
-        # Вызываем НОВУЮ функцию для загрузки всех данных из Confluence
-        confluence_text = self._load_all_confluence_data()
+            # Вызываем функцию для загрузки всех данных из Confluence (если нужно)
+            confluence_text = self._load_all_confluence_data()
 
-        # Вызываем функцию для загрузки локальных файлов
-        local_text = self._load_local_files()
-        
-        # 2. Объединяем все тексты в один
-        full_text = (
-            f"--- ИНФОРМАЦИЯ ИЗ GIT ---\n{git_text}\n\n"
-            f"--- ИНФОРМАЦИЯ ИЗ CONFLUENCE ---\n{confluence_text}\n\n"
-            f"--- ИНФОРМАЦИЯ ИЗ ЛОКАЛЬНЫХ ФАЙЛОВ ---\n{local_text}"
-        )
-        
-        # 3. Разбиваем на чанки
-        chunks = self._chunk_text(full_text)
-        print(f"Текст разбит на {len(chunks)} чанков.")
-        
-        # 4. Очищаем старую коллекцию
-        self.client.delete_collection(name="asupgr_knowledge")
-        self.collection = self.client.get_or_create_collection(name="asupgr_knowledge")
-        
-        # 5. Создаем эмбеддинги для всех чанков
-        print("Создаю эмбеддинги для чанков... Это может занять время.")
-        embeddings = self.embedding_model.embed_documents(chunks)
-        
-        # 6. Добавляем в базу
-        ids = [str(i) for i in range(len(chunks))]
-        self.collection.add(
-            documents=chunks,
-            embeddings=embeddings,
-            ids=ids
-        )
-        print(f"База знаний успешно проиндексирована. Добавлено {len(chunks)} документов.")
+            # Вызываем функцию для загрузки локальных файлов (если нужно)
+            local_text = self._load_local_files()
+            
+            # 2. Объединяем все тексты в один
+            full_text = (
+                f"--- ИНФОРМАЦИЯ ИЗ GIT [{sys.upper()}] ---\n{git_text}\n\n"
+                f"--- ИНФОРМАЦИЯ ИЗ CONFLUENCE ---\n{confluence_text}\n\n"
+                f"--- ИНФОРМАЦИЯ ИЗ ЛОКАЛЬНЫХ ФАЙЛОВ ---\n{local_text}"
+            )
+            
+            if not git_text.strip() and not confluence_text.strip() and not local_text.strip():
+                print(f"   Предупреждение: Нет данных для системы {sys}. Пропускаю индексацию.")
+                continue
+            
+            # 3. Разбиваем на чанки
+            chunks = self._chunk_text(full_text)
+            print(f"Текст разбит на {len(chunks)} чанков для системы {sys}.")
+            
+            # 4. Очищаем старую коллекцию для этой системы
+            collection_name = f"{sys}_knowledge"
+            try:
+                self.client.delete_collection(name=collection_name)
+            except:
+                pass  # Коллекция может не существовать
+            self.collections[sys] = self.client.get_or_create_collection(name=collection_name)
+            
+            # 5. Создаем эмбеддинги для всех чанков
+            print(f"Создаю эмбеддинги для чанков системы {sys}... Это может занять время.")
+            embeddings = self.embedding_model.embed_documents(chunks)
+            
+            # 6. Добавляем в базу
+            ids = [f"{sys}_{i}" for i in range(len(chunks))]
+            self.collections[sys].add(
+                documents=chunks,
+                embeddings=embeddings,
+                ids=ids
+            )
+            print(f"База знаний для системы {sys} успешно проиндексирована. Добавлено {len(chunks)} документов.")
 
-    def search_relevant_knowledge(self, query: str, n_results: int = 80) -> str:
-        """Ищет релевантные чанки по запросу пользователя."""
+    def search_relevant_knowledge(self, query: str, n_results: int = 80, system: str = None) -> str:
+        """
+        Ищет релевантные чанки по запросу пользователя в указанной системе.
+        
+        Args:
+            query: Текст запроса
+            n_results: Количество результатов для поиска
+            system: "asupgr" или "digital_twin". Если None, пытается определить автоматически.
+        
+        Returns:
+            Текст с релевантными чанками
+        """
+        # Если система не указана, пытаемся определить из запроса
+        if system is None:
+            system = self.detect_system_from_query(query)
+        
         print(f"Ищу релевантную информацию по запросу: '{query}'")
+        if system:
+            print(f"Использую базу знаний для системы: {system}")
+        else:
+            print("Система не определена, ищу в обеих базах знаний.")
         
         query_embedding = self.embedding_model.embed_query(query)
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results
-        )
         
-        if not results['documents'] or not results['documents'][0]:
-            return "Релевантная информация в базе знаний не найдена."
+        # Если система определена, ищем только в её базе
+        if system and system in self.collections:
+            collection_name = f"{system}_knowledge"
+
+            def _run_query() -> dict:
+                return self.collections[system].query(
+                    query_embeddings=[query_embedding],
+                    n_results=n_results
+                )
+
+            try:
+                results = _run_query()
+            except Exception as e:
+                if "Collection" in str(e) and "does not exist" in str(e):
+                    print(f"Коллекция {collection_name} не найдена. Переинициализирую...")
+                    self.collections[system] = self.client.get_or_create_collection(name=collection_name)
+                    results = _run_query()
+                else:
+                    raise
             
-        retrieved_chunks = results['documents'][0]
-        context = "\n\n---\n\n".join(retrieved_chunks)
-        print(f"Найдено {len(retrieved_chunks)} релевантных чанков.")
-        
-        return context
+            if not results['documents'] or not results['documents'][0]:
+                return "Релевантная информация в базе знаний не найдена."
+                
+            retrieved_chunks = results['documents'][0]
+            context = "\n\n---\n\n".join(retrieved_chunks)
+            print(f"Найдено {len(retrieved_chunks)} релевантных чанков в базе {system}.")
+            return context
+        else:
+            # Если система не определена, ищем в обеих базах и объединяем результаты
+            all_chunks = []
+            for sys in ["asupgr", "digital_twin"]:
+                if sys in self.collections:
+                    results = self.collections[sys].query(
+                        query_embeddings=[query_embedding],
+                        n_results=n_results // 2  # Делим результаты пополам
+                    )
+                    if results['documents'] and results['documents'][0]:
+                        all_chunks.extend(results['documents'][0])
+            
+            if not all_chunks:
+                return "Релевантная информация в базе знаний не найдена."
+            
+            context = "\n\n---\n\n".join(all_chunks)
+            print(f"Найдено {len(all_chunks)} релевантных чанков в обеих базах.")
+            return context
